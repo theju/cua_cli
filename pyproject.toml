@@ -1,0 +1,25 @@
+[project]
+name = "cua-agents"
+version = "0.1.0"
+description = "Computer Use Agent harness for mouse_commander"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=2.0.0",
+]
+
+[project.scripts]
+cua = "cua_agents.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,21 @@
+{
+  "turns": [
+    {
+      "response_id": "script_1",
+      "summaries": ["Move to the center and wait."],
+      "calls": [
+        {
+          "call_id": "script_call_1",
+          "actions": [
+            {"type": "move", "x": 50, "y": 50},
+            {"type": "wait", "ms": 100}
+          ]
+        }
+      ]
+    },
+    {
+      "response_id": "script_2",
+      "final_text": "Script completed."
+    }
+  ]
+}
