@@ -65,6 +65,9 @@ class LMStudioBackend:
     temperature: float = 0.0
     api_key: str | None = None
     http_post: HttpPost | None = None
+    provider_name: str = "LM Studio"
+    call_id_prefix: str = "lmstudio_call"
+    error_type: type[RuntimeError] = LMStudioError
 
     def __post_init__(self) -> None:
         self._messages: list[dict[str, Any]] = []
@@ -131,19 +134,21 @@ class LMStudioBackend:
         try:
             content = response["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise LMStudioError(f"LM Studio returned an unexpected response shape: {response!r}") from exc
+            raise self.error_type(
+                f"{self.provider_name} returned an unexpected response shape: {response!r}"
+            ) from exc
 
         if not isinstance(content, str):
-            raise LMStudioError(f"LM Studio message content must be text, got {type(content).__name__}")
+            raise self.error_type(
+                f"{self.provider_name} message content must be text, got {type(content).__name__}"
+            )
 
         self._messages.append({"role": "assistant", "content": content})
         return self._parse_content(content, usage=response.get("usage"))
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        headers = self._headers()
         if self.http_post:
             return self.http_post(url, payload, headers, self.timeout)
 
@@ -158,14 +163,22 @@ class LMStudioBackend:
                 data = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise LMStudioError(f"LM Studio request failed with HTTP {exc.code}: {detail}") from exc
+            raise self.error_type(
+                f"{self.provider_name} request failed with HTTP {exc.code}: {detail}"
+            ) from exc
         except URLError as exc:
-            raise LMStudioError(f"LM Studio request failed: {exc.reason}") from exc
+            raise self.error_type(f"{self.provider_name} request failed: {exc.reason}") from exc
 
         try:
             return json.loads(data)
         except json.JSONDecodeError as exc:
-            raise LMStudioError(f"LM Studio returned invalid JSON: {data!r}") from exc
+            raise self.error_type(f"{self.provider_name} returned invalid JSON: {data!r}") from exc
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
 
     def _parse_content(self, content: str, usage: dict[str, Any] | None = None) -> AgentTurn:
         data = _extract_json_object(content)
@@ -197,7 +210,7 @@ class LMStudioBackend:
             self._call_counter += 1
             calls.append(
                 ComputerCall(
-                    call_id=str(raw_call.get("call_id") or f"lmstudio_call_{self._call_counter}"),
+                    call_id=str(raw_call.get("call_id") or f"{self.call_id_prefix}_{self._call_counter}"),
                     actions=actions,
                     pending_safety_checks=list(raw_call.get("pending_safety_checks", [])),
                 )

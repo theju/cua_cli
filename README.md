@@ -7,8 +7,9 @@ computer actions, and executes supported actions through the running
 The goal of this project is to keep the local computer-control layer small and
 inspectable. The harness is responsible for the loop, screenshots, safety
 confirmations, coordinate scaling, and HTTP calls to `input_commander`. The agent
-backend is swappable: use OpenAI for real computer-use tasks, or use the scripted
-backend for deterministic local testing.
+backend is swappable: use OpenAI for native computer-use tasks, OpenRouter or
+LM Studio for vision-chat models that emit JSON actions, or the scripted backend
+for deterministic local testing.
 
 The run loop is asynchronous, event-emitting, and resumable. Multiple sessions
 can run at the same time, and sessions pause on approval requests until a caller
@@ -24,7 +25,8 @@ Contains AI-generated code.
 - `input_commander` already running at `http://localhost:8080`
 - A screenshot tool for your platform: Spectacle for KDE Wayland, ImageMagick
   `import` for X11, PowerShell for Windows, or `screencapture` for macOS
-- `OPENAI_API_KEY` for the OpenAI backend
+- `OPENAI_API_KEY` for the OpenAI backend, or `OPENROUTER_API_KEY` for the
+  OpenRouter backend
 
 `input_commander` is available at https://github.com/theju/input_commander and
 is expected to expose these endpoints:
@@ -94,6 +96,15 @@ Run against a local LM Studio model:
 
 ```bash
 uv run cua run --backend lmstudio --lmstudio-model local-vision-model "inspect the current screen"
+```
+
+Run against an OpenRouter vision-capable chat model:
+
+```bash
+OPENROUTER_API_KEY=... uv run cua run \
+  --backend openrouter \
+  --openrouter-model provider/model-name \
+  "inspect the current screen"
 ```
 
 ## Python library usage
@@ -409,12 +420,42 @@ If the local model returns plain text instead of JSON, the harness treats that
 text as a final message and stops. This is intentionally conservative: the
 harness will not infer desktop actions from ambiguous prose.
 
+### OpenRouter backend
+
+The OpenRouter backend talks to OpenRouter's OpenAI-compatible chat completions
+API. It is useful for trying hosted vision-capable models that do not expose a
+native computer-use API.
+
+Set an API key, choose a model that accepts image input, then run:
+
+```bash
+OPENROUTER_API_KEY=... uv run cua run \
+  --backend openrouter \
+  --openrouter-model provider/model-name \
+  "summarize what is visible on screen"
+```
+
+The default OpenRouter settings are:
+
+- `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+- `OPENROUTER_MODEL=openrouter/auto`
+- `OPENROUTER_TIMEOUT=120`
+- `OPENROUTER_API_KEY` unset
+- `OPENROUTER_HTTP_REFERER` unset
+- `OPENROUTER_APP_TITLE=cua-agents`
+
+The OpenRouter backend uses the same screenshot and JSON action protocol as the
+LM Studio backend. Quality depends on the selected model's vision ability,
+instruction following, and ability to produce the requested JSON without extra
+prose.
+
 ### Other model providers
 
 The harness is provider-neutral below the backend layer. OpenAI is the only live
-hosted model provider implemented today, and LM Studio is implemented for local
-models. Another provider can be added without changing screenshot capture,
-safety confirmations, coordinate scaling, or `input_commander` execution.
+native computer-use provider implemented today. OpenRouter and LM Studio are
+implemented for OpenAI-compatible chat models that emit JSON actions. Another
+provider can be added without changing screenshot capture, safety confirmations,
+coordinate scaling, or `input_commander` execution.
 
 To add another model provider:
 
@@ -481,8 +522,8 @@ Important provider requirements:
 
 The scripted backend is the easiest reference implementation for the normalized
 schema. The OpenAI backend is the reference implementation for a native
-computer-use provider. The LM Studio backend is the reference implementation for
-a generic vision-chat provider that emits JSON actions.
+computer-use provider. The LM Studio and OpenRouter backends are reference
+implementations for generic vision-chat providers that emit JSON actions.
 
 ## Configuration
 
@@ -500,6 +541,10 @@ Defaults:
 - `LMSTUDIO_BASE_URL=http://localhost:1234/v1`
 - `LMSTUDIO_MODEL=local-model`
 - `LMSTUDIO_TIMEOUT=120`
+- `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+- `OPENROUTER_MODEL=openrouter/auto`
+- `OPENROUTER_TIMEOUT=120`
+- `OPENROUTER_APP_TITLE=cua-agents`
 
 CLI flags override environment variables:
 
@@ -592,6 +637,8 @@ real keyboard.
 - `src/cua_agents/cli.py`: command-line interface.
 - `src/cua_agents/runner.py`: computer-use loop and safety confirmations.
 - `src/cua_agents/openai_backend.py`: OpenAI Responses API integration.
+- `src/cua_agents/openrouter_backend.py`: OpenRouter chat-completions integration.
+- `src/cua_agents/lmstudio_backend.py`: LM Studio chat-completions integration.
 - `src/cua_agents/scripted_backend.py`: deterministic backend for tests.
 - `src/cua_agents/input_commander.py`: HTTP client for `input_commander`.
 - `src/cua_agents/executor.py`: action mapping and coordinate scaling.

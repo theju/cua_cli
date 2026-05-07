@@ -9,6 +9,7 @@ from .input_commander import InputCommanderClient
 from .executor import ActionExecutor
 from .lmstudio_backend import LMStudioBackend
 from .openai_backend import OpenAIComputerBackend
+from .openrouter_backend import OpenRouterBackend
 from .runner import AsyncRunSession, run_terminal_session
 from .safety import SafetyPolicy
 from .scripted_backend import ScriptedBackend
@@ -20,7 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser("run", help="run a computer-use task")
     run.add_argument("task", help="task for the agent to perform")
-    run.add_argument("--backend", choices=["openai", "lmstudio", "scripted"], default="openai")
+    run.add_argument(
+        "--backend",
+        choices=["openai", "openrouter", "lmstudio", "scripted"],
+        default="openai",
+    )
     run.add_argument("--script", help="scripted backend JSON file")
     run.add_argument(
         "--input-commander-url",
@@ -35,6 +40,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=float(os.getenv("LMSTUDIO_TIMEOUT", "120")),
         help="LM Studio request timeout in seconds",
+    )
+    run.add_argument(
+        "--openrouter-url",
+        default=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+    )
+    run.add_argument("--openrouter-model", default=os.getenv("OPENROUTER_MODEL", "openrouter/auto"))
+    run.add_argument("--openrouter-api-key", default=os.getenv("OPENROUTER_API_KEY"))
+    run.add_argument("--openrouter-http-referer", default=os.getenv("OPENROUTER_HTTP_REFERER"))
+    run.add_argument("--openrouter-app-title", default=os.getenv("OPENROUTER_APP_TITLE", "cua-agents"))
+    run.add_argument(
+        "--openrouter-timeout",
+        type=float,
+        default=float(os.getenv("OPENROUTER_TIMEOUT", "120")),
+        help="OpenRouter request timeout in seconds",
     )
     run.add_argument("--environment", default=os.getenv("CUA_ENVIRONMENT", "linux"))
     run.add_argument(
@@ -109,6 +128,15 @@ async def run_command_async(args: argparse.Namespace) -> int:
             model=args.lmstudio_model,
             api_key=args.lmstudio_api_key,
             timeout=args.lmstudio_timeout,
+        )
+    elif args.backend == "openrouter":
+        backend = OpenRouterBackend(
+            base_url=args.openrouter_url,
+            model=args.openrouter_model,
+            api_key=args.openrouter_api_key,
+            http_referer=args.openrouter_http_referer,
+            app_title=args.openrouter_app_title,
+            timeout=args.openrouter_timeout,
         )
     else:
         backend = OpenAIComputerBackend(
