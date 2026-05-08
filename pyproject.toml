@@ -5,7 +5,9 @@ description = "Computer Use Agent harness for mouse_commander"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.110.0",
     "openai>=2.0.0",
+    "uvicorn>=0.29.0",
 ]
 
 [project.scripts]

@@ -4,15 +4,8 @@ import argparse
 import asyncio
 import os
 
-from .capture import CaptureConfig, create_capture_backend
-from .input_commander import InputCommanderClient
-from .executor import ActionExecutor
-from .lmstudio_backend import LMStudioBackend
-from .openai_backend import OpenAIComputerBackend
-from .openrouter_backend import OpenRouterBackend
-from .runner import AsyncRunSession, run_terminal_session
-from .safety import SafetyPolicy
-from .scripted_backend import ScriptedBackend
+from .runner import run_terminal_session
+from .session_factory import RunConfig, build_session
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -100,6 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=int(os.getenv("INPUT_COMMANDER_HEIGHT", "1080")),
         help="absolute Y range configured in input_commander",
     )
+
+    serve = subparsers.add_parser("serve", help="run the HTTP CUA server")
+    serve.add_argument("--host", default=os.getenv("CUA_SERVER_HOST", "127.0.0.1"))
+    serve.add_argument("--port", type=int, default=int(os.getenv("CUA_SERVER_PORT", "8765")))
+    serve.add_argument("--token", default=os.getenv("CUA_SERVER_TOKEN"))
+    serve.add_argument(
+        "--allow-no-auth",
+        action="store_true",
+        help="development only: allow requests without bearer-token auth",
+    )
     return parser
 
 
@@ -109,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         return run_command(args)
+    if args.command == "serve":
+        return serve_command(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
@@ -118,33 +123,6 @@ def run_command(args: argparse.Namespace) -> int:
 
 
 async def run_command_async(args: argparse.Namespace) -> int:
-    if args.backend == "scripted":
-        if not args.script:
-            raise SystemExit("--script is required with --backend scripted")
-        backend = ScriptedBackend.from_file(args.script)
-    elif args.backend == "lmstudio":
-        backend = LMStudioBackend(
-            base_url=args.lmstudio_url,
-            model=args.lmstudio_model,
-            api_key=args.lmstudio_api_key,
-            timeout=args.lmstudio_timeout,
-        )
-    elif args.backend == "openrouter":
-        backend = OpenRouterBackend(
-            base_url=args.openrouter_url,
-            model=args.openrouter_model,
-            api_key=args.openrouter_api_key,
-            http_referer=args.openrouter_http_referer,
-            app_title=args.openrouter_app_title,
-            timeout=args.openrouter_timeout,
-        )
-    else:
-        backend = OpenAIComputerBackend(
-            model=args.model,
-            environment=args.environment,
-            tool_shape=args.tool_shape,
-        )
-
     if args.step:
         safety_mode = "step"
     elif args.yes:
@@ -152,30 +130,52 @@ async def run_command_async(args: argparse.Namespace) -> int:
     else:
         safety_mode = "confirm_risky"
 
-    commander = InputCommanderClient(
-        base_url=args.input_commander_url,
-        absolute_width=args.input_commander_width,
-        absolute_height=args.input_commander_height,
-    )
-    session = AsyncRunSession(
-        task=args.task,
-        backend=backend,
-        capture=create_capture_backend(
-            CaptureConfig(
-                backend=args.capture_backend,
-                spectacle_bin=args.spectacle_bin,
-                x11_bin=args.x11_capture_bin,
-                windows_bin=args.windows_capture_bin,
-                mac_bin=args.mac_capture_bin,
-                mode=args.capture_mode,
-                delay_ms=args.capture_delay_ms,
-            )
-        ),
-        executor=ActionExecutor(commander=commander),
-        safety=SafetyPolicy(mode=safety_mode),
-        max_steps=args.max_steps,
-        debug=args.debug,
+    session = build_session(
+        RunConfig(
+            task=args.task,
+            backend=args.backend,
+            script=args.script,
+            input_commander_url=args.input_commander_url,
+            input_commander_width=args.input_commander_width,
+            input_commander_height=args.input_commander_height,
+            model=args.model,
+            lmstudio_url=args.lmstudio_url,
+            lmstudio_model=args.lmstudio_model,
+            lmstudio_api_key=args.lmstudio_api_key,
+            lmstudio_timeout=args.lmstudio_timeout,
+            openrouter_url=args.openrouter_url,
+            openrouter_model=args.openrouter_model,
+            openrouter_api_key=args.openrouter_api_key,
+            openrouter_http_referer=args.openrouter_http_referer,
+            openrouter_app_title=args.openrouter_app_title,
+            openrouter_timeout=args.openrouter_timeout,
+            environment=args.environment,
+            capture_backend=args.capture_backend,
+            spectacle_bin=args.spectacle_bin,
+            x11_capture_bin=args.x11_capture_bin,
+            windows_capture_bin=args.windows_capture_bin,
+            mac_capture_bin=args.mac_capture_bin,
+            capture_mode=args.capture_mode,
+            capture_delay_ms=args.capture_delay_ms,
+            tool_shape=args.tool_shape,
+            max_steps=args.max_steps,
+            debug=args.debug,
+            safety_mode=safety_mode,
+        )
     )
     result = await run_terminal_session(session)
     print(f"\nstatus: {result.status}")
     return 0 if result.status == "completed" else 1
+
+
+def serve_command(args: argparse.Namespace) -> int:
+    if not args.allow_no_auth and not args.token:
+        raise SystemExit("CUA_SERVER_TOKEN or --token is required unless --allow-no-auth is set")
+
+    import uvicorn
+
+    from .server import create_app
+
+    app = create_app(server_token=args.token, allow_no_auth=args.allow_no_auth)
+    uvicorn.run(app, host=args.host, port=args.port)
+    return 0

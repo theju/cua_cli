@@ -107,6 +107,32 @@ OPENROUTER_API_KEY=... uv run cua run \
   "inspect the current screen"
 ```
 
+## HTTP server
+
+Start the local HTTP server with bearer-token auth:
+
+```bash
+CUA_SERVER_TOKEN=dev-token uv run cua serve
+```
+
+Submit a run:
+
+```bash
+curl -X POST http://127.0.0.1:8765/runs \
+  -H "Authorization: Bearer dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"inspect the current screen","backend":"openai","max_steps":10}'
+```
+
+The server returns a `session_id`. Poll events with
+`GET /runs/{session_id}/events`, inspect status with `GET /runs/{session_id}`,
+approve or reject paused actions with
+`POST /runs/{session_id}/approvals/{approval_id}`, and request stop with
+`POST /runs/{session_id}/stop`.
+
+Only one desktop run is active at a time. New `POST /runs` requests return
+`409` while another run is still controlling the mouse and keyboard.
+
 ## Python library usage
 
 The harness can be used directly from Python. The CLI is only a thin wrapper

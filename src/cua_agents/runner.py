@@ -51,6 +51,17 @@ class AsyncRunSession:
     def result(self) -> RunResult | None:
         return self._result
 
+    @property
+    def pending_approval_ids(self) -> list[str]:
+        return list(self._pending_approvals)
+
+    @property
+    def event_count(self) -> int:
+        return len(self._history)
+
+    def events_after(self, sequence: int) -> list[RunEvent]:
+        return [event for event in self._history if event.sequence > sequence]
+
     async def events(self):
         queue: asyncio.Queue[RunEvent | None] = asyncio.Queue()
         for event in self._history:
